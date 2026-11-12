@@ -1,0 +1,51 @@
+<Application x:Class="MediaDesk.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="MainWindow.xaml">
+  <Application.Resources>
+    <SolidColorBrush x:Key="Bg" Color="#0B1220"/>
+    <SolidColorBrush x:Key="Panel" Color="#172237"/>
+    <SolidColorBrush x:Key="Inset" Color="#101A2B"/>
+    <SolidColorBrush x:Key="Text" Color="#ECF2FA"/>
+    <SolidColorBrush x:Key="Muted" Color="#9CADC5"/>
+    <SolidColorBrush x:Key="Accent" Color="#3B82F6"/>
+    <Style TargetType="Button">
+      <Setter Property="Background" Value="{StaticResource Accent}"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="8,4"/>
+      <Setter Property="Margin" Value="2"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="MinHeight" Value="27"/>
+    </Style>
+    <Style TargetType="TextBox">
+      <Setter Property="Background" Value="{StaticResource Inset}"/>
+      <Setter Property="Foreground" Value="{StaticResource Text}"/>
+      <Setter Property="CaretBrush" Value="White"/>
+      <Setter Property="BorderBrush" Value="#38506D"/>
+      <Setter Property="Padding" Value="8,4"/>
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style TargetType="TabItem">
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Padding" Value="10,6"/>
+    </Style>
+    <Style TargetType="DataGrid">
+      <Setter Property="Background" Value="{StaticResource Inset}"/>
+      <Setter Property="Foreground" Value="{StaticResource Text}"/>
+      <Setter Property="RowBackground" Value="{StaticResource Inset}"/>
+      <Setter Property="AlternatingRowBackground" Value="{StaticResource Panel}"/>
+      <Setter Property="BorderBrush" Value="#33455D"/>
+      <Setter Property="HorizontalGridLinesBrush" Value="Transparent"/>
+      <Setter Property="VerticalGridLinesBrush" Value="Transparent"/>
+      <Setter Property="HeadersVisibility" Value="Column"/>
+      <Setter Property="GridLinesVisibility" Value="None"/>
+      <Setter Property="RowHeight" Value="26"/>
+      <Setter Property="AutoGenerateColumns" Value="False"/>
+      <Setter Property="IsReadOnly" Value="True"/>
+      <Setter Property="CanUserAddRows" Value="False"/>
+    </Style>
+  </Application.Resources>
+</Application>

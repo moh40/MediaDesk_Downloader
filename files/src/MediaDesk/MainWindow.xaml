@@ -1,0 +1,126 @@
+<Window x:Class="MediaDesk.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="MediaDesk • Windows Media Manager" Width="675" Height="465"
+        MinWidth="620" MinHeight="420" Background="{StaticResource Bg}" Foreground="{StaticResource Text}"
+        WindowStartupLocation="CenterScreen" Closing="Window_Closing">
+  <Grid Margin="11">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="59"/>
+      <RowDefinition Height="83"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="29"/>
+    </Grid.RowDefinitions>
+
+    <Grid Grid.Row="0">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <StackPanel VerticalAlignment="Center">
+        <TextBlock Text="◈  MEDIADESK" FontSize="19" FontWeight="Bold" Foreground="#F3F7FC"/>
+        <TextBlock x:Name="Subtitle" Text="مدير تنزيلات ووسائط لويندوز • إصدار تجريبي مستقل" FontSize="11" Foreground="{StaticResource Muted}" Margin="3,3,0,0"/>
+      </StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+        <Button x:Name="LanguageButton" Content="English" Click="Language_Click" Background="{StaticResource Panel}"/>
+        <Button x:Name="FolderTopButton" Content="📁 مجلد التنزيلات" Click="Folder_Click" Background="{StaticResource Panel}"/>
+      </StackPanel>
+    </Grid>
+
+    <Border Grid.Row="1" Background="{StaticResource Panel}" CornerRadius="9" Padding="10" Margin="0,0,0,9">
+      <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <TextBlock x:Name="AddressHint" Text="الصق رابطًا مباشرًا لملف مسموح بتنزيله (HTTP/HTTPS)" FontSize="11" Foreground="{StaticResource Muted}" Margin="4,0,0,4"/>
+        <Grid Grid.Row="1">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+          <TextBox x:Name="UrlBox" Grid.Column="0" VerticalAlignment="Center" Height="31" FlowDirection="LeftToRight"
+                   KeyDown="UrlBox_KeyDown" ToolTip="https://example.com/video.mp4"/>
+          <Button x:Name="DownloadButton" Grid.Column="1" Content="⬇ تنزيل" Click="Download_Click" Height="31"/>
+          <Button x:Name="SearchButton" Grid.Column="2" Content="⌕ بحث في المتصفح" Click="Search_Click"
+                  Background="{StaticResource Inset}" Height="31"/>
+        </Grid>
+      </Grid>
+    </Border>
+
+    <TabControl Grid.Row="2" x:Name="Pages" Background="{StaticResource Panel}" BorderThickness="0"
+                HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+      <TabItem x:Name="DownloadsTab" Header="التنزيلات">
+        <Grid Margin="7">
+          <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <DataGrid x:Name="DownloadsGrid" ItemsSource="{Binding Downloads}" SelectionMode="Single">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="الملف" Binding="{Binding FileName}" Width="2*"/>
+              <DataGridTextColumn Header="الحالة" Binding="{Binding State}" Width="75"/>
+              <DataGridTemplateColumn Header="التقدم" Width="95">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <ProgressBar Value="{Binding Progress}" Minimum="0" Maximum="100" Height="10" VerticalAlignment="Center" Foreground="#38BDF8" Background="#26354B"/>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="الحجم" Binding="{Binding SizeText}" Width="110"/>
+              <DataGridTextColumn Header="السرعة" Binding="{Binding SpeedText}" Width="75"/>
+              <DataGridTextColumn Header="الرابط" Binding="{Binding Url}" Width="2*"/>
+            </DataGrid.Columns>
+          </DataGrid>
+          <WrapPanel Grid.Row="1" Margin="0,5,0,0">
+            <Button x:Name="PauseButton" Content="⏸ إيقاف مؤقت" Click="Pause_Click" Background="{StaticResource Inset}"/>
+            <Button x:Name="ResumeButton" Content="▶ متابعة" Click="Resume_Click" Background="{StaticResource Inset}"/>
+            <Button x:Name="CancelButton" Content="✕ إلغاء" Click="Cancel_Click" Background="#893B47"/>
+            <Button x:Name="OpenDownloadButton" Content="↗ فتح الملف" Click="OpenDownload_Click" Background="{StaticResource Inset}"/>
+            <Button x:Name="DeleteHistoryButton" Content="حذف من القائمة" Click="DeleteHistory_Click" Background="{StaticResource Inset}"/>
+          </WrapPanel>
+        </Grid>
+      </TabItem>
+      <TabItem x:Name="LibraryTab" Header="المكتبة">
+        <Grid Margin="7">
+          <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <DataGrid x:Name="LibraryGrid" ItemsSource="{Binding Library}" MouseDoubleClick="LibraryGrid_DoubleClick">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="الاسم" Binding="{Binding Name}" Width="3*"/>
+              <DataGridTextColumn Header="الحجم" Binding="{Binding Size}" Width="130"/>
+              <DataGridTextColumn Header="آخر تعديل" Binding="{Binding Modified}" Width="110"/>
+              <DataGridTextColumn Header="المسار" Binding="{Binding FullPath}" Width="3*"/>
+            </DataGrid.Columns>
+          </DataGrid>
+          <WrapPanel Grid.Row="1" Margin="0,5,0,0">
+            <Button x:Name="RefreshButton" Content="↻ تحديث المكتبة" Click="Refresh_Click" Background="{StaticResource Inset}"/>
+            <Button x:Name="PlayButton" Content="▶ تشغيل المحدد" Click="Play_Click"/>
+            <Button x:Name="OpenLibraryButton" Content="↗ فتح خارجيًا" Click="OpenLibrary_Click" Background="{StaticResource Inset}"/>
+          </WrapPanel>
+        </Grid>
+      </TabItem>
+      <TabItem x:Name="FavoritesTab" Header="المفضلة">
+        <Grid Margin="7">
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <TextBlock x:Name="FavoritesHint" Text="احفظ الروابط للعودة إليها. انقر نقرًا مزدوجًا لنسخ الرابط إلى الحقل العلوي."
+                     Foreground="{StaticResource Muted}" Margin="4,4,0,12"/>
+          <ListBox x:Name="FavoritesList" Grid.Row="1" ItemsSource="{Binding Favorites}" MouseDoubleClick="Favorites_DoubleClick"
+                   Background="{StaticResource Inset}" Foreground="{StaticResource Text}" BorderBrush="#33455D"/>
+          <WrapPanel Grid.Row="2" Margin="0,5,0,0">
+            <Button x:Name="SaveFavoriteButton" Content="☆ إضافة الرابط الحالي" Click="AddFavorite_Click"/>
+            <Button x:Name="RemoveFavoriteButton" Content="حذف المحدد" Click="RemoveFavorite_Click" Background="{StaticResource Inset}"/>
+          </WrapPanel>
+        </Grid>
+      </TabItem>
+      <TabItem x:Name="SettingsTab" Header="الإعدادات">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="12">
+          <TextBlock x:Name="SettingsHeading" Text="مجلد حفظ الملفات" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,10"/>
+          <TextBlock x:Name="FolderText" TextWrapping="Wrap" FlowDirection="LeftToRight" Foreground="{StaticResource Muted}" Margin="0,0,0,8"/>
+          <Button x:Name="ChangeFolderButton" Content="اختيار مجلد آخر" Click="ChooseFolder_Click" HorizontalAlignment="Left"/>
+          <Separator Margin="0,12,0,9"/>
+          <TextBlock x:Name="LimitNote" Text="التنزيل الحالي: ملفات بروابط مباشرة فقط. لا يدعم استخراج روابط من صفحات أو تجاوز DRM." TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="11"/>
+          <TextBlock x:Name="PlayerNote" Text="المشغل يستخدم ترميزات ويندوز المثبتة على النظام." Margin="0,5,0,0" Foreground="{StaticResource Muted}"/>
+          <TextBlock Text="MediaDesk v0.1.0 • Windows x64 • .NET 10 / WPF" Margin="0,12,0,0" Foreground="#4C94FF"/>
+        </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+    </TabControl>
+
+    <Border Grid.Row="3" BorderBrush="#243753" BorderThickness="0,1,0,0" Margin="0,5,0,0">
+      <TextBlock x:Name="StatusText" Text="جاهز" Foreground="{StaticResource Muted}" VerticalAlignment="Center" FontSize="11" TextTrimming="CharacterEllipsis"/>
+    </Border>
+  </Grid>
+</Window>

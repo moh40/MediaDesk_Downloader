@@ -1,0 +1,24 @@
+<Window x:Class="MediaDesk.PlayerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="MediaDesk Player" Width="560" Height="360" MinWidth="460" MinHeight="330"
+        Background="#090F1C" Foreground="White" WindowStartupLocation="CenterOwner">
+  <Grid Margin="12">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+    <TextBlock x:Name="FileTitle" FontSize="12" Foreground="#E5ECF5" Margin="6,6,6,15" TextTrimming="CharacterEllipsis"/>
+    <Border Grid.Row="1" Background="Black" CornerRadius="6" ClipToBounds="True">
+      <MediaElement x:Name="Media" LoadedBehavior="Manual" UnloadedBehavior="Stop"
+                    MediaOpened="Media_Opened" MediaFailed="Media_Failed" Stretch="Uniform"/>
+    </Border>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="5,12">
+      <Button Content="▶ Play" Click="Play_Click"/>
+      <Button Content="⏸ Pause" Click="Pause_Click"/>
+      <Button Content="⏹ Stop" Click="Stop_Click"/>
+      <Button Content="Open externally" Click="External_Click"/>
+    </StackPanel>
+  </Grid>
+</Window>

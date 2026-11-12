@@ -1,0 +1,257 @@
+#Requires -Version 5.1
+<#
+MediaDesk v0.3.0 Windows x64 release builder.
+Run on the Windows PC where the tested candidate was compiled.
+Creates an installer EXE and a portable ZIP. Does not replace the tested release.
+#>
+param(
+    [string]$ProjectRoot = 'D:\MediaDesk-Windows',
+    [string]$CandidateExe = '',
+    [switch]$SkipPortableZip
+)
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+function Assert-File([string]$Path, [string]$Hint) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "MISSING: $Path`n$Hint"
+    }
+}
+function Find-Executable([string]$Name, [string[]]$Directories) {
+    foreach ($dir in $Directories) {
+        if ([string]::IsNullOrWhiteSpace($dir)) { continue }
+        $p = Join-Path $dir $Name
+        if (Test-Path -LiteralPath $p -PathType Leaf) { return (Resolve-Path -LiteralPath $p).Path }
+    }
+    $cmd = Get-Command $Name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($cmd) { return $cmd.Source }
+    return $null
+}
+function Test-Command([string]$Path, [string[]]$Arguments) {
+    Assert-File $Path 'Required executable was not found.'
+    & $Path @Arguments | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "COMMAND TEST FAILED: $Path (exit $LASTEXITCODE)" }
+}
+function Write-UTF8([string]$Path, [string]$Content) {
+    [IO.File]::WriteAllText($Path, $Content, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+Write-Host '=== MEDIADESK WINDOWS RELEASE BUILDER ===' -ForegroundColor Cyan
+if (-not $CandidateExe) {
+    $CandidateExe = 'C:\Users\Moh45\AppData\Local\MediaDesk\v030-browser-ui-r3-20261112162011\candidate\MediaDesk.exe'
+}
+Assert-File $CandidateExe 'Use -CandidateExe to specify the tested R3 MediaDesk.exe.'
+$candidateDir = Split-Path -Parent $CandidateExe
+Assert-File (Join-Path $ProjectRoot 'src\MediaDesk\MediaDesk.csproj') 'The source project folder was not found.'
+$browserRoot = Join-Path $ProjectRoot 'browser-extensions\v030-r3'
+foreach ($browser in @('firefox','chrome-edge')) {
+    Assert-File (Join-Path $browserRoot "$browser\manifest.json") 'Install the R3 browser extension files first.'
+}
+
+$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$distRoot = Join-Path $ProjectRoot 'dist'
+$work = Join-Path $distRoot ("release-build-" + $stamp)
+$stage = Join-Path $work 'MediaDesk'
+$out = Join-Path $distRoot 'out'
+$toolsDir = Join-Path $stage 'tools'
+New-Item -ItemType Directory -Force -Path $stage,$out,$toolsDir | Out-Null
+
+Write-Host '=== STAGING TESTED R3 CANDIDATE ===' -ForegroundColor Cyan
+Get-ChildItem -LiteralPath $candidateDir -Force | ForEach-Object {
+    Copy-Item -LiteralPath $_.FullName -Destination $stage -Recurse -Force
+}
+Assert-File (Join-Path $stage 'MediaDesk.exe') 'The candidate could not be staged.'
+New-Item -ItemType Directory -Path (Join-Path $stage 'browser-extensions') -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $browserRoot 'firefox') -Destination (Join-Path $stage 'browser-extensions\firefox') -Recurse -Force
+Copy-Item -LiteralPath (Join-Path $browserRoot 'chrome-edge') -Destination (Join-Path $stage 'browser-extensions\chrome-edge') -Recurse -Force
+
+# A pip-installed yt-dlp.exe is only a launcher pointing at the Python on this PC.
+# Always build a truly frozen helper instead of silently shipping the pip launcher.
+Write-Host '=== PACKAGING PYTHON-INDEPENDENT YT-DLP ===' -ForegroundColor Cyan
+& py -3.11 -m yt_dlp --version
+if ($LASTEXITCODE -ne 0) { throw 'yt-dlp for Python 3.11 is missing or broken.' }
+# yt-dlp-ejs is necessary for fuller YouTube support in current yt-dlp.
+$ejsReady = $false
+try {
+    & py -3.11 -c 'import importlib.util,sys;sys.exit(0 if importlib.util.find_spec("yt_dlp_ejs") else 1)' 2>$null
+    if ($LASTEXITCODE -eq 0) { $ejsReady = $true }
+} catch { $ejsReady = $false }
+if (-not $ejsReady) {
+    throw 'YT-DLP-EJS MISSING. Run: py -3.11 -m pip install --user "yt-dlp[default]" (then rerun builder).'
+}
+$pyInstallerReady = $false
+try {
+    & py -3.11 -c 'import PyInstaller' 2>$null
+    if ($LASTEXITCODE -eq 0) { $pyInstallerReady = $true }
+} catch { $pyInstallerReady = $false }
+if (-not $pyInstallerReady) {
+    Write-Host 'Installing PyInstaller from PyPI for packaging (build PC only)...'
+    & py -3.11 -m pip install --user --upgrade pyinstaller
+    if ($LASTEXITCODE -ne 0) { throw 'Could not install PyInstaller. Check PyPI connectivity.' }
+}
+$runner = Join-Path $work 'yt_dlp_runner.py'
+Write-UTF8 $runner "from yt_dlp import main`nif __name__ == '__main__':`n    main()`n"
+$pybuild = Join-Path $work 'pyinstaller-work'
+$pyspec = Join-Path $work 'pyinstaller-spec'
+& py -3.11 -m PyInstaller '--noconfirm' '--clean' '--onefile' '--console' '--name' 'yt-dlp' '--collect-all' 'yt_dlp' '--collect-all' 'yt_dlp_ejs' '--distpath' $toolsDir '--workpath' $pybuild '--specpath' $pyspec $runner
+if ($LASTEXITCODE -ne 0) { throw 'PyInstaller could not freeze yt-dlp.' }
+$yt = Join-Path $toolsDir 'yt-dlp.exe'
+Assert-File $yt 'The standalone yt-dlp.exe was not generated.'
+Test-Command $yt @('--version')
+Test-Command $yt @('--list-extractors')
+Write-Host 'YT-DLP STANDALONE CHECKS PASSED' -ForegroundColor Green
+
+Write-Host '=== BUNDLING NODE JAVASCRIPT RUNTIME ===' -ForegroundColor Cyan
+$node = Get-Command 'node.exe' -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+if (-not $node) { throw 'NODE.EXE NOT FOUND. Node.js >=22 is required in this full installer for yt-dlp-ejs.' }
+$nodeVersion = (& $node.Source '--version').Trim()
+if ($LASTEXITCODE -ne 0) { throw 'NODE.EXE VERSION CHECK FAILED' }
+if ($nodeVersion -notmatch '^v(\d+)\.') { throw "UNRECOGNIZED NODE VERSION: $nodeVersion" }
+$nodeMajor = [int]$Matches[1]
+if ($nodeMajor -lt 22) { throw "NODE.JS VERSION TOO OLD: $nodeVersion. Install Node.js 22 or newer." }
+Copy-Item -LiteralPath $node.Source -Destination (Join-Path $toolsDir 'node.exe') -Force
+$nodeLicense = Join-Path (Split-Path -Parent $node.Source) 'LICENSE'
+if (Test-Path -LiteralPath $nodeLicense) {
+    Copy-Item -LiteralPath $nodeLicense -Destination (Join-Path $toolsDir 'NODE-LICENSE.txt') -Force
+}
+Test-Command (Join-Path $toolsDir 'node.exe') @('--version')
+Write-UTF8 (Join-Path $toolsDir 'yt-dlp.conf') '--js-runtimes node'
+Write-Host "NODE RUNTIME READY: $nodeVersion" -ForegroundColor Green
+
+Write-Host '=== BUNDLING FFMPEG / FFPROBE / FFPLAY ===' -ForegroundColor Cyan
+$previousTools = Join-Path $ProjectRoot 'release\win-x64\tools'
+$searchDirs = @($toolsDir, $previousTools)
+$ffmpegCommand = Get-Command ffmpeg.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($ffmpegCommand) { $searchDirs += (Split-Path -Parent $ffmpegCommand.Source) }
+foreach ($name in @('ffmpeg.exe','ffprobe.exe','ffplay.exe')) {
+    $src = Find-Executable $name $searchDirs
+    if (-not $src) { throw "MISSING $name. Install a FULL static FFmpeg Windows build and add its bin folder to PATH; all 3 tools are required for a complete package." }
+    $target = Join-Path $toolsDir $name
+    if (([IO.Path]::GetFullPath($src)) -ne ([IO.Path]::GetFullPath($target))) { Copy-Item -LiteralPath $src -Destination $target -Force }
+    $searchDirs += (Split-Path -Parent $src)
+}
+# Shared Windows FFmpeg builds can require DLLs next to the executables.
+foreach ($dir in ($searchDirs | Select-Object -Unique)) {
+    if ($dir -and (Test-Path -LiteralPath $dir -PathType Container)) {
+        Get-ChildItem -LiteralPath $dir -Filter '*.dll' -File -ErrorAction SilentlyContinue | ForEach-Object {
+            $dst = Join-Path $toolsDir $_.Name
+            if (-not (Test-Path -LiteralPath $dst)) { Copy-Item -LiteralPath $_.FullName -Destination $dst }
+        }
+    }
+}
+foreach ($name in @('ffmpeg.exe','ffprobe.exe','ffplay.exe')) {
+    Test-Command (Join-Path $toolsDir $name) @('-version')
+    Write-Host "$name : OK"
+}
+
+$browserHelp = @'
+MediaDesk v0.3.0 — Browser integration
+
+Chrome: open chrome://extensions, enable Developer mode, Load unpacked,
+then choose the installed browser-extensions\chrome-edge directory.
+Edge: open edge://extensions and follow the same steps.
+Firefox: about:debugging#/runtime/this-firefox > Load Temporary Add-on,
+choose browser-extensions\firefox\manifest.json. Temporary add-ons disappear
+when Firefox restarts. Permanent Firefox installation requires a signed add-on.
+
+The Windows installer registers mediadesk:// for the current user. Browsers
+may ask permission to open MediaDesk. Supported content only; not DRM bypass.
+'@
+Write-UTF8 (Join-Path $stage 'Browser-Setup.txt') $browserHelp
+$notices = @'
+Third-party notices and redistribution reminders
+
+yt-dlp: https://github.com/yt-dlp/yt-dlp
+The PyInstaller-frozen yt-dlp binaries include GPLv3+ licensed code.
+The developer redistributing the resulting installer must include all
+required corresponding license materials and comply with GPL obligations.
+
+Node.js (bundled runtime): https://nodejs.org/ and https://github.com/nodejs/node
+See NODE-LICENSE.txt when present for third-party license notices.
+
+FFmpeg/FFplay/FFprobe: https://ffmpeg.org/legal.html
+Their license (LGPL/GPL and possibly additional terms) depends on the exact
+Windows build. Before public redistribution, obtain its LICENSE, notices,
+and corresponding source/offer from the build provider and comply with them.
+
+This builder creates a package intended for personal testing/transfer.
+It does not grant distribution rights for third-party codecs or content.
+'@
+Write-UTF8 (Join-Path $stage 'THIRD_PARTY_NOTICES.txt') $notices
+
+Write-Host '=== PREPARING INNO SETUP ===' -ForegroundColor Cyan
+$isccCandidates = @(
+    'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
+    'C:\Program Files\Inno Setup 6\ISCC.exe',
+    'C:\Program Files\Inno Setup 7\ISCC.exe',
+    'C:\Program Files (x86)\Inno Setup 7\ISCC.exe'
+)
+$iscc = $isccCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+if (-not $iscc) {
+    $isccCommand = Get-Command ISCC.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($isccCommand) { $iscc = $isccCommand.Source }
+}
+if (-not $iscc) {
+    throw "INNO SETUP COMPILER NOT FOUND. Install it once on THIS PC:`nwinget install --id JRSoftware.InnoSetup --exact --source winget`nThen rerun this script. The staged files are in: $stage"
+}
+
+$iss = Join-Path $work 'MediaDesk-Setup.iss'
+# This is a per-user installer: no administrator rights are necessary on target PCs.
+$issBody = @"
+[Setup]
+AppId={{93633D9E-416F-4A5C-8536-8BEAC1D577A6}
+AppName=MediaDesk
+AppVersion=0.3.0
+AppPublisher=MediaDesk
+DefaultDirName={localappdata}\Programs\MediaDesk
+DefaultGroupName=MediaDesk
+PrivilegesRequired=lowest
+ArchitecturesAllowed=x64compatible
+Compression=lzma2
+SolidCompression=yes
+WizardStyle=modern
+UninstallDisplayIcon={app}\MediaDesk.exe
+OutputDir=$out
+OutputBaseFilename=MediaDesk-Setup-v0.3.0-x64
+
+[Files]
+Source: "$stage\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[Tasks]
+Name: "desktopicon"; Description: "Create desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: unchecked
+
+[Icons]
+Name: "{group}\MediaDesk"; Filename: "{app}\MediaDesk.exe"
+Name: "{autodesktop}\MediaDesk"; Filename: "{app}\MediaDesk.exe"; Tasks: desktopicon
+
+[Registry]
+Root: HKCU; Subkey: "Software\Classes\mediadesk"; ValueType: string; ValueName: ""; ValueData: "URL:MediaDesk Download Protocol"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\mediadesk"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKCU; Subkey: "Software\Classes\mediadesk\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\MediaDesk.exe"" ""%1"""
+
+[Run]
+Filename: "{app}\MediaDesk.exe"; Description: "Launch MediaDesk"; Flags: nowait postinstall skipifsilent
+"@
+Write-UTF8 $iss $issBody
+
+Write-Host '=== COMPILING SINGLE-FILE INSTALLER ===' -ForegroundColor Cyan
+& $iscc $iss
+if ($LASTEXITCODE -ne 0) { throw 'INNO SETUP BUILD FAILED' }
+$setup = Join-Path $out 'MediaDesk-Setup-v0.3.0-x64.exe'
+Assert-File $setup 'Inno Setup reported success but EXE is missing.'
+
+$portableZip = Join-Path $out 'MediaDesk-Portable-v0.3.0-x64.zip'
+if (-not $SkipPortableZip) {
+    Write-Host '=== CREATING PORTABLE ZIP ===' -ForegroundColor Cyan
+    Compress-Archive -Path $stage -DestinationPath $portableZip -CompressionLevel Optimal -Force
+    Assert-File $portableZip 'Portable archive was not created.'
+}
+
+Write-Host '=== RELEASE ARTIFACTS ===' -ForegroundColor Green
+Get-Item -LiteralPath $setup | Select-Object FullName,Length,LastWriteTime | Format-List
+Write-Host "SETUP SHA256: $((Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash)"
+if (-not $SkipPortableZip) {
+    Get-Item -LiteralPath $portableZip | Select-Object FullName,Length,LastWriteTime | Format-List
+}
+Write-Host 'MEDIADESK RELEASE PACKAGE BUILT; TEST INSTALLATION ON ANOTHER WINDOWS PC BEFORE SHARING' -ForegroundColor Green
